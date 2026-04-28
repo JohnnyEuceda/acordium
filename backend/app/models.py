@@ -14,6 +14,12 @@ class User(Base):
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4()))
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    display_name: Mapped[str | None] = mapped_column(String)
+    bio: Mapped[str | None] = mapped_column(Text)
+    avatar_url: Mapped[str | None] = mapped_column(Text)
+    theme: Mapped[str] = mapped_column(String, nullable=False, default="morado")
+    social_platform: Mapped[str | None] = mapped_column(String)
+    social_url: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     songs: Mapped[list["Song"]] = relationship(back_populates="user", cascade="all, delete-orphan")
@@ -48,6 +54,8 @@ class Song(Base):
     original_key: Mapped[str] = mapped_column(String, nullable=False)
     content: Mapped[list[dict]] = mapped_column(JSONB, nullable=False)
     instrument: Mapped[str] = mapped_column(String, nullable=False, default="guitar")
+    is_public: Mapped[bool] = mapped_column(default=False)
+    source_song_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), ForeignKey("songs.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     user: Mapped[User] = relationship(back_populates="songs")

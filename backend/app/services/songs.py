@@ -20,6 +20,8 @@ class SongService:
             original_key=song.original_key,
             content=song.content,
             tags=self.songs.get_tag_names(str(song.id)),
+            is_public=bool(song.is_public),
+            source_song_id=str(song.source_song_id) if song.source_song_id else None,
             created_at=song.created_at,
         )
 

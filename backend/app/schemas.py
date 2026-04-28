@@ -85,6 +85,8 @@ class SongResponse(BaseModel):
     original_key: str
     content: list[dict]
     tags: list[str] = []
+    is_public: bool = False
+    source_song_id: str | None = None
     created_at: datetime
 
 
