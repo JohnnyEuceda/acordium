@@ -119,7 +119,7 @@ export function App() {
     const [eventList, memberList] = await Promise.all([api.listEvents(groupId, token), api.listMembers(groupId, token)]);
     setEvents(eventList);
     setMembers(memberList);
-    setSelectedEventId((current) => current ?? eventList[0]?.id ?? null);
+    setSelectedEventId((current) => eventList.some((event) => event.id === current) ? current : null);
   }
 
   async function loadEventDetails(eventId: string) {
@@ -153,6 +153,10 @@ export function App() {
   }
 
   async function togglePublic(song: Song) {
+    if (song.source_song_id) {
+      setError("Las copias no se pueden publicar para evitar duplicados en Explorar.");
+      return;
+    }
     const isPublic = !song.is_public;
     await api.setSongVisibility(song.id, isPublic, token);
     await loadAll();
@@ -250,6 +254,13 @@ export function App() {
     await loadGroupDetails(selectedGroupId);
   }
 
+  async function archiveEvent(event: GroupEvent) {
+    if (!selectedGroupId) return;
+    await api.updateEvent(selectedGroupId, event.id, { title: event.title, event_date: event.event_date, notes: event.notes || undefined, status: "archived" }, token);
+    setSelectedEventId(null);
+    await loadGroupDetails(selectedGroupId);
+  }
+
   async function deleteEvent(event: GroupEvent) {
     if (!selectedGroupId) return;
     await api.deleteEvent(selectedGroupId, event.id, token);
@@ -260,6 +271,12 @@ export function App() {
   async function addSongToEvent(songId: string) {
     if (!selectedEventId) return;
     await api.addEventSong(selectedEventId, songId, token);
+    await loadEventDetails(selectedEventId);
+  }
+
+  async function removeSongFromEvent(songId: string) {
+    if (!selectedEventId) return;
+    await api.removeEventSong(selectedEventId, songId, token);
     await loadEventDetails(selectedEventId);
   }
 
@@ -302,6 +319,23 @@ export function App() {
     setEditingPlaylist(false);
     setEditingEvent(false);
     setMenuOpen(false);
+  }
+
+  function openSong(song: Song) {
+    setSelectedSong(song);
+    setEditingSong(false);
+    go("canciones");
+  }
+
+  function openGroup(group: Group) {
+    setSelectedGroupId(group.id);
+    setSelectedEventId(null);
+    go("grupos");
+  }
+
+  function backToEvents() {
+    setSelectedEventId(null);
+    setEditingEvent(false);
   }
 
   if (!token) {
@@ -352,11 +386,11 @@ export function App() {
         <button className="logout-button" onClick={logout}><LogOut size={18} />{!menuCollapsed && "Salir"}</button>
       </aside>
       <section className="workspace">
-        {view === "inicio" && <HomeView songs={songs} playlists={playlists} artists={artists} groups={groups} publicSongs={publicSongs} onNavigate={go} onNewSong={() => { setSelectedSong(null); setEditingSong(true); setView("canciones"); }} />}
+        {view === "inicio" && <HomeView songs={songs} playlists={playlists} artists={artists} groups={groups} publicSongs={publicSongs} onNavigate={go} onOpenSong={openSong} onOpenGroup={openGroup} onNewSong={() => { setSelectedSong(null); setEditingSong(true); setView("canciones"); }} />}
         {view === "canciones" && <SongsView songs={songs} selectedSong={selectedSong} editing={editingSong} transposeBy={transposeBy} visibleContent={visibleContent} artists={artists} onSelect={(song) => { setSelectedSong(song); setEditingSong(false); }} onNew={() => { setSelectedSong(null); setEditingSong(true); }} onEdit={() => setEditingSong(true)} onDelete={deleteSong} onSave={saveSong} onTranspose={transpose} onPerformance={() => setView("canciones-performance")} onTogglePublic={togglePublic} error={error} />}
         {view === "artistas" && <ArtistsView artists={artists} songs={songs} />}
         {view === "listas" && <PlaylistsView songs={songs} playlists={playlists} selectedPlaylist={selectedPlaylist} editing={editingPlaylist} name={playlistName} description={playlistDescription} songIds={playlistSongIds} onSelect={(playlist) => { setSelectedPlaylistId(playlist.id); setEditingPlaylist(false); }} onNew={startPlaylistCreate} onEdit={startPlaylistEdit} onDelete={deletePlaylist} onName={setPlaylistName} onDescription={setPlaylistDescription} onSongIds={setPlaylistSongIds} onSave={savePlaylist} />}
-        {view === "grupos" && <GroupsView groups={groups} selectedGroup={selectedGroup} selectedEvent={selectedEvent} events={events} members={members} songs={songs} eventSongs={eventSongs} comments={eventComments} groupName={groupName} groupDescription={groupDescription} joinCode={joinCode} editingEvent={editingEvent} eventTitle={eventTitle} eventDate={eventDate} eventNotes={eventNotes} commentBody={commentBody} onGroupName={setGroupName} onGroupDescription={setGroupDescription} onJoinCode={setJoinCode} onCreateGroup={createGroup} onJoinGroup={joinGroup} onLeaveGroup={leaveGroup} onSelectGroup={setSelectedGroupId} onSelectEvent={setSelectedEventId} onNewEvent={startEventCreate} onEditEvent={startEventEdit} onDeleteEvent={deleteEvent} onEventTitle={setEventTitle} onEventDate={setEventDate} onEventNotes={setEventNotes} onSaveEvent={saveEvent} onAddSong={addSongToEvent} onCopySong={copySong} onCommentBody={setCommentBody} onAddComment={addComment} />}
+        {view === "grupos" && <GroupsView groups={groups} selectedGroup={selectedGroup} selectedEvent={selectedEvent} events={events} members={members} songs={songs} eventSongs={eventSongs} comments={eventComments} groupName={groupName} groupDescription={groupDescription} joinCode={joinCode} editingEvent={editingEvent} eventTitle={eventTitle} eventDate={eventDate} eventNotes={eventNotes} commentBody={commentBody} onGroupName={setGroupName} onGroupDescription={setGroupDescription} onJoinCode={setJoinCode} onCreateGroup={createGroup} onJoinGroup={joinGroup} onLeaveGroup={leaveGroup} onSelectGroup={(id) => { setSelectedGroupId(id); setSelectedEventId(null); }} onSelectEvent={setSelectedEventId} onBackToEvents={backToEvents} onNewEvent={startEventCreate} onEditEvent={startEventEdit} onArchiveEvent={archiveEvent} onDeleteEvent={deleteEvent} onEventTitle={setEventTitle} onEventDate={setEventDate} onEventNotes={setEventNotes} onSaveEvent={saveEvent} onAddSong={addSongToEvent} onRemoveSong={removeSongFromEvent} onCopySong={copySong} onCommentBody={setCommentBody} onAddComment={addComment} />}
         {view === "explorar" && <ExploreView songs={publicSongs} onRate={rate} onCopy={copySong} />}
         {view === "configuracion" && profile && <ProfileView profile={profile} theme={theme} themes={themes} onSave={saveProfile} />}
       </section>
@@ -368,7 +402,7 @@ function NavButton({ active, collapsed, icon, label, onClick }: { active: boolea
   return <button className={active ? "nav-item active" : "nav-item"} onClick={onClick} title={label}>{icon}{!collapsed && label}</button>;
 }
 
-function HomeView({ songs, playlists, artists, groups, publicSongs, onNavigate, onNewSong }: { songs: Song[]; playlists: Playlist[]; artists: Artist[]; groups: Group[]; publicSongs: PublicSong[]; onNavigate: (view: View) => void; onNewSong: () => void }) {
+function HomeView({ songs, playlists, artists, groups, publicSongs, onNavigate, onOpenSong, onOpenGroup, onNewSong }: { songs: Song[]; playlists: Playlist[]; artists: Artist[]; groups: Group[]; publicSongs: PublicSong[]; onNavigate: (view: View) => void; onOpenSong: (song: Song) => void; onOpenGroup: (group: Group) => void; onNewSong: () => void }) {
   return (
     <div className="page">
       <header className="topbar">
@@ -383,8 +417,8 @@ function HomeView({ songs, playlists, artists, groups, publicSongs, onNavigate, 
         <SummaryCard icon={<Globe2 size={22} />} label="Publicas" value={publicSongs.length} onClick={() => onNavigate("explorar")} />
       </section>
       <section className="content-grid">
-        <div className="panel"><h3>Canciones recientes</h3>{songs.slice(0, 6).map((song) => <p key={song.id}><strong>{song.title}</strong><span>{song.artist_name || "Sin artista"}</span></p>)}</div>
-        <div className="panel"><h3>Grupos</h3>{groups.slice(0, 6).map((group) => <p key={group.id}><strong>{group.name}</strong><span>{group.member_count} miembros</span></p>)}</div>
+        <div className="panel"><h3>Canciones recientes</h3>{songs.slice(0, 6).map((song) => <button className="home-row" key={song.id} onClick={() => onOpenSong(song)}><strong>{song.title}</strong><span>{song.artist_name || "Sin artista"}</span></button>)}</div>
+        <div className="panel"><h3>Grupos</h3>{groups.slice(0, 6).map((group) => <button className="home-row" key={group.id} onClick={() => onOpenGroup(group)}><strong>{group.name}</strong><span>{group.member_count} miembros</span></button>)}</div>
       </section>
     </div>
   );
@@ -430,7 +464,7 @@ function SongsView(props: {
             <span className="transpose-count">{props.transposeBy > 0 ? `+${props.transposeBy}` : props.transposeBy}</span>
             <button className="icon-button" onClick={() => props.onTranspose(1)} disabled={!props.selectedSong || props.editing} title="Subir tonalidad"><Plus size={18} /></button>
             <button onClick={props.onEdit} disabled={!props.selectedSong}>Editar</button>
-            {props.selectedSong && <button onClick={() => props.onTogglePublic(props.selectedSong!)}><Globe2 size={18} /> {props.selectedSong.is_public ? "Quitar pública" : "Publicar"}</button>}
+            {props.selectedSong && <button onClick={() => props.onTogglePublic(props.selectedSong!)} disabled={Boolean(props.selectedSong.source_song_id)} title={props.selectedSong.source_song_id ? "Las copias se mantienen privadas para evitar duplicados" : "Publicar en Explorar"}><Globe2 size={18} /> {props.selectedSong.is_public ? "Quitar publica" : "Publicar"}</button>}
             <button className="icon-button" onClick={props.onPerformance} disabled={!props.selectedSong || props.editing} title="Pantalla completa"><Expand size={18} /></button>
           </div>
         </header>
@@ -487,14 +521,13 @@ function GroupsView(props: {
   groups: Group[]; selectedGroup: Group | null; selectedEvent: GroupEvent | null; events: GroupEvent[]; members: GroupMember[]; songs: Song[]; eventSongs: EventSong[]; comments: EventComment[];
   groupName: string; groupDescription: string; joinCode: string; editingEvent: boolean; eventTitle: string; eventDate: string; eventNotes: string; commentBody: string;
   onGroupName: (v: string) => void; onGroupDescription: (v: string) => void; onJoinCode: (v: string) => void; onCreateGroup: () => void; onJoinGroup: () => void; onLeaveGroup: (g: Group) => void;
-  onSelectGroup: (id: string) => void; onSelectEvent: (id: string) => void; onNewEvent: () => void; onEditEvent: (e: GroupEvent) => void; onDeleteEvent: (e: GroupEvent) => void;
+  onSelectGroup: (id: string) => void; onSelectEvent: (id: string) => void; onBackToEvents: () => void; onNewEvent: () => void; onEditEvent: (e: GroupEvent) => void; onArchiveEvent: (e: GroupEvent) => void; onDeleteEvent: (e: GroupEvent) => void;
   onEventTitle: (v: string) => void; onEventDate: (v: string) => void; onEventNotes: (v: string) => void; onSaveEvent: (status?: "active" | "archived") => void;
-  onAddSong: (songId: string) => void; onCopySong: (songId: string) => void; onCommentBody: (v: string) => void; onAddComment: () => void;
+  onAddSong: (songId: string) => void; onRemoveSong: (songId: string) => void; onCopySong: (songId: string) => void; onCommentBody: (v: string) => void; onAddComment: () => void;
 }) {
   const now = Date.now();
   const future = props.events.filter((event) => event.status === "active" && new Date(event.event_date).getTime() >= now);
-  const past = props.events.filter((event) => event.status === "active" && new Date(event.event_date).getTime() < now);
-  const archived = props.events.filter((event) => event.status === "archived");
+  const past = props.events.filter((event) => event.status === "archived" || new Date(event.event_date).getTime() < now);
   return (
     <div className="page group-page">
       <header className="topbar"><div><h2>Grupos</h2><p>Crea equipos, comparte canciones y prepara eventos juntos.</p></div></header>
@@ -509,15 +542,18 @@ function GroupsView(props: {
           {props.selectedGroup ? (
             <>
               <div className="group-hero"><div><h1>{props.selectedGroup.name}</h1><p>{props.selectedGroup.description || "Grupo colaborativo"}</p><strong>Codigo: {props.selectedGroup.code}</strong></div><button onClick={() => props.onLeaveGroup(props.selectedGroup!)}>Salir del grupo</button></div>
-              <div className="content-grid">
-                <EventColumn title="Eventos futuros" events={future} selectedId={props.selectedEvent?.id} onSelect={props.onSelectEvent} />
-                <EventColumn title="Eventos pasados" events={past} selectedId={props.selectedEvent?.id} onSelect={props.onSelectEvent} />
-                <EventColumn title="Archivados" events={archived} selectedId={props.selectedEvent?.id} onSelect={props.onSelectEvent} />
-              </div>
-              <div className="toolbar"><button className="primary" onClick={props.onNewEvent}><Plus size={18} /> Nuevo evento</button>{props.selectedEvent && <button onClick={() => props.onEditEvent(props.selectedEvent!)}>Editar evento</button>}{props.selectedEvent && <button onClick={() => props.onSaveEvent("archived")}><Archive size={18} /> Archivar</button>}{props.selectedEvent && <button onClick={() => props.onDeleteEvent(props.selectedEvent!)}><Trash2 size={18} /> Borrar</button>}</div>
-              {props.editingEvent && <section className="panel"><div className="form-grid compact"><label>Titulo<input value={props.eventTitle} onChange={(event) => props.onEventTitle(event.target.value)} /></label><label>Fecha<input type="datetime-local" value={props.eventDate} onChange={(event) => props.onEventDate(event.target.value)} /></label></div><label>Observaciones<textarea className="small-textarea" value={props.eventNotes} onChange={(event) => props.onEventNotes(event.target.value)} /></label><button className="primary" onClick={() => props.onSaveEvent("active")} disabled={!props.eventTitle.trim()}>Guardar evento</button></section>}
-              {props.selectedEvent && <EventDetail event={props.selectedEvent} songs={props.songs} eventSongs={props.eventSongs} comments={props.comments} commentBody={props.commentBody} onAddSong={props.onAddSong} onCopySong={props.onCopySong} onCommentBody={props.onCommentBody} onAddComment={props.onAddComment} />}
-              <div className="panel"><h3>Miembros</h3>{props.members.map((member) => <p key={member.id}><strong>{member.display_name}</strong><span>{member.role}</span></p>)}</div>
+              {!props.selectedEvent && !props.editingEvent && (
+                <>
+                  <div className="toolbar"><button className="primary" onClick={props.onNewEvent}><Plus size={18} /> Nuevo evento</button></div>
+                  <div className="content-grid">
+                    <EventColumn title="Eventos futuros" events={future} onSelect={props.onSelectEvent} />
+                    <EventColumn title="Eventos pasados" events={past} onSelect={props.onSelectEvent} />
+                  </div>
+                  <div className="panel"><h3>Miembros</h3>{props.members.map((member) => <p key={member.id}><strong>{member.display_name}</strong><span>{member.role}</span></p>)}</div>
+                </>
+              )}
+              {props.editingEvent && <section className="panel event-editor"><div className="panel-header"><h3>{props.selectedEvent ? "Editar evento" : "Nuevo evento"}</h3><button onClick={props.onBackToEvents}>Volver</button></div><div className="form-grid compact"><label>Titulo<input value={props.eventTitle} onChange={(event) => props.onEventTitle(event.target.value)} /></label><label>Fecha<input type="datetime-local" value={props.eventDate} onChange={(event) => props.onEventDate(event.target.value)} /></label></div><label>Observaciones<textarea className="small-textarea" value={props.eventNotes} onChange={(event) => props.onEventNotes(event.target.value)} /></label><button className="primary" onClick={() => props.onSaveEvent("active")} disabled={!props.eventTitle.trim()}>Guardar evento</button></section>}
+              {props.selectedEvent && !props.editingEvent && <EventDetail event={props.selectedEvent} songs={props.songs} eventSongs={props.eventSongs} comments={props.comments} commentBody={props.commentBody} onBack={props.onBackToEvents} onEdit={() => props.onEditEvent(props.selectedEvent!)} onArchive={() => props.onArchiveEvent(props.selectedEvent!)} onDelete={() => props.onDeleteEvent(props.selectedEvent!)} onAddSong={props.onAddSong} onRemoveSong={props.onRemoveSong} onCopySong={props.onCopySong} onCommentBody={props.onCommentBody} onAddComment={props.onAddComment} />}
             </>
           ) : <div className="empty-state"><Users size={36} /><h2>Crea o unete a un grupo</h2></div>}
         </section>
@@ -526,14 +562,20 @@ function GroupsView(props: {
   );
 }
 
-function EventColumn({ title, events, selectedId, onSelect }: { title: string; events: GroupEvent[]; selectedId?: string; onSelect: (id: string) => void }) {
-  return <div className="panel event-column"><h3>{title}</h3>{events.length === 0 && <p>Sin eventos.</p>}{events.map((event) => <button key={event.id} className={selectedId === event.id ? "event-card active" : "event-card"} onClick={() => onSelect(event.id)}><strong>{event.title}</strong><span>{new Date(event.event_date).toLocaleString()}</span></button>)}</div>;
+function EventColumn({ title, events, onSelect }: { title: string; events: GroupEvent[]; onSelect: (id: string) => void }) {
+  return <div className="panel event-column"><h3>{title}</h3>{events.length === 0 && <p>Sin eventos.</p>}{events.map((event) => <button key={event.id} className="event-card" onClick={() => onSelect(event.id)}><strong>{event.title}</strong><span>{new Date(event.event_date).toLocaleString()}</span></button>)}</div>;
 }
 
-function EventDetail(props: { event: GroupEvent; songs: Song[]; eventSongs: EventSong[]; comments: EventComment[]; commentBody: string; onAddSong: (id: string) => void; onCopySong: (id: string) => void; onCommentBody: (v: string) => void; onAddComment: () => void }) {
+function EventDetail(props: { event: GroupEvent; songs: Song[]; eventSongs: EventSong[]; comments: EventComment[]; commentBody: string; onBack: () => void; onEdit: () => void; onArchive: () => void; onDelete: () => void; onAddSong: (id: string) => void; onRemoveSong: (id: string) => void; onCopySong: (id: string) => void; onCommentBody: (v: string) => void; onAddComment: () => void }) {
+  const [activeSongId, setActiveSongId] = useState<string | null>(null);
+  const activeSong = props.eventSongs.find((song) => song.id === activeSongId) ?? props.eventSongs[0] ?? null;
   return (
-    <section className="event-detail">
-      <div className="panel"><h3>{props.event.title}</h3><p>{props.event.notes || "Sin observaciones."}</p><select onChange={(event) => event.target.value && props.onAddSong(event.target.value)} defaultValue=""><option value="">Agregar cancion al evento</option>{props.songs.map((song) => <option value={song.id} key={song.id}>{song.title}</option>)}</select>{props.eventSongs.map((song) => <div className="event-song" key={song.id}><div className="avatar">{song.owner_initials}</div><div><strong>{song.title}</strong><small>Publicada por {song.owner_name}. Agregada por {song.added_by_name}</small></div><button onClick={() => props.onCopySong(song.id)}><Copy size={16} /> Copiar</button></div>)}</div>
+    <section className="event-page">
+      <header className="topbar"><div><button onClick={props.onBack}>Volver a eventos</button><h2>{props.event.title}</h2><p>{new Date(props.event.event_date).toLocaleString()}</p></div><div className="toolbar"><button onClick={props.onEdit}>Editar</button><button onClick={props.onArchive}><Archive size={18} /> Archivar</button><button onClick={props.onDelete}><Trash2 size={18} /> Borrar</button></div></header>
+      <div className="event-focus-grid">
+        <div className="panel event-song-list"><h3>Canciones del evento</h3><p>{props.event.notes || "Sin observaciones."}</p><select onChange={(event) => event.target.value && props.onAddSong(event.target.value)} defaultValue=""><option value="">Agregar cancion al evento</option>{props.songs.map((song) => <option value={song.id} key={song.id}>{song.title}</option>)}</select>{props.eventSongs.map((song) => <div className={activeSong?.id === song.id ? "event-song active" : "event-song"} key={song.id}><div className="avatar">{song.owner_initials}</div><button className="event-song-title" onClick={() => setActiveSongId(song.id)}><strong>{song.title}</strong><small>Publicada por {song.owner_name}. Agregada por {song.added_by_name}</small></button><div className="song-actions"><button onClick={() => props.onCopySong(song.id)} title="Copiar"><Copy size={16} /></button><button onClick={() => props.onRemoveSong(song.id)} title="Quitar"><Trash2 size={16} /></button></div></div>)}</div>
+        <div className="panel event-player">{activeSong ? <><div className="panel-header"><h3>{activeSong.title}</h3><span>{activeSong.artist_name || "Sin artista"}</span></div><SongViewer content={activeSong.content} /></> : <div className="empty-state"><Music size={36} /><h2>Agrega una cancion para verla aqui</h2></div>}</div>
+      </div>
       <div className="panel"><h3>Conversacion</h3>{props.comments.map((comment) => <div className="comment" key={comment.id}><div className="avatar">{comment.author_initials}</div><div><strong>{comment.author_name}</strong><p>{comment.body}</p></div></div>)}<div className="comment-box"><input value={props.commentBody} onChange={(event) => props.onCommentBody(event.target.value)} placeholder="Responder observacion..." /><button onClick={props.onAddComment}><MessageSquare size={18} /></button></div></div>
     </section>
   );

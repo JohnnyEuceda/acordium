@@ -117,6 +117,8 @@ export const api = {
   listEventSongs: (eventId: string, token: string) => request<EventSong[]>(`/events/${eventId}/songs`, {}, token),
   addEventSong: (eventId: string, songId: string, token: string) =>
     request<{ ok: boolean }>(`/events/${eventId}/songs`, { method: "POST", body: JSON.stringify({ song_id: songId }) }, token),
+  removeEventSong: (eventId: string, songId: string, token: string) =>
+    request<void>(`/events/${eventId}/songs/${songId}`, { method: "DELETE" }, token),
   listEventComments: (eventId: string, token: string) => request<EventComment[]>(`/events/${eventId}/comments`, {}, token),
   createEventComment: (eventId: string, body: string, token: string) =>
     request<{ ok: boolean }>(`/events/${eventId}/comments`, { method: "POST", body: JSON.stringify({ body }) }, token)

@@ -178,9 +178,12 @@ def update_profile(payload: ProfileUpdate, current_user: User = Depends(get_curr
 
 @router.put("/songs/{song_id}/visibility")
 def set_song_visibility(song_id: str, payload: SongVisibilityRequest, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    result = db.execute(text("UPDATE songs SET is_public = :public WHERE id = :song_id AND user_id = :user_id"), {"public": payload.is_public, "song_id": song_id, "user_id": str(current_user.id)})
-    if result.rowcount == 0:
+    song = db.execute(text("SELECT id, source_song_id FROM songs WHERE id = :song_id AND user_id = :user_id"), {"song_id": song_id, "user_id": str(current_user.id)}).mappings().first()
+    if not song:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cancion no encontrada")
+    if payload.is_public and song["source_song_id"]:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Las copias no se pueden publicar para evitar duplicados")
+    db.execute(text("UPDATE songs SET is_public = :public WHERE id = :song_id"), {"public": payload.is_public, "song_id": song_id})
     db.commit()
     return {"ok": True}
 
@@ -196,7 +199,7 @@ def list_public_songs(db: Session = Depends(get_db)):
             JOIN users u ON u.id = s.user_id
             LEFT JOIN artists a ON a.id = s.artist_id
             LEFT JOIN song_ratings sr ON sr.song_id = s.id
-            WHERE s.is_public = true
+            WHERE s.is_public = true AND s.source_song_id IS NULL
             GROUP BY s.id, a.name, u.display_name, u.email
             ORDER BY rating_average DESC, s.created_at DESC
             """
@@ -246,7 +249,7 @@ def copy_song(song_id: str, current_user: User = Depends(get_current_user), db: 
             "album_id": row["album_id"],
             "original_key": row["original_key"],
             "content": row["content"],
-            "source_song_id": song_id,
+            "source_song_id": str(row["source_song_id"] or song_id),
         },
     )
     db.commit()
@@ -418,6 +421,15 @@ def add_event_song(event_id: str, payload: EventSongAdd, current_user: User = De
     )
     db.commit()
     return {"ok": True}
+
+
+@router.delete("/events/{event_id}/songs/{song_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_event_song(event_id: str, song_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    group_id = db.scalar(text("SELECT group_id FROM group_events WHERE id = :event_id"), {"event_id": event_id})
+    require_member(db, str(group_id), str(current_user.id))
+    db.execute(text("DELETE FROM event_songs WHERE event_id = :event_id AND song_id = :song_id"), {"event_id": event_id, "song_id": song_id})
+    db.commit()
+    return None
 
 
 @router.get("/events/{event_id}/comments")
